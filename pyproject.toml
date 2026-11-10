@@ -1,0 +1,15 @@
+[project]
+name = "comfyui-subgraph-input-values"
+description = "Edit a subgraph's promoted values right next to its input boundary while you work inside it."
+version = "0.1.0"
+license = {file = "LICENSE"}
+
+[project.urls]
+Repository = "https://github.com/nomadoor/ComfyUI-Subgraph-Input-Values"
+"Bug Tracker" = "https://github.com/nomadoor/ComfyUI-Subgraph-Input-Values/issues"
+
+[tool.comfy]
+PublisherId = "nomadoor"
+DisplayName = "Subgraph Input Values"
+Icon = ""
+includes = []

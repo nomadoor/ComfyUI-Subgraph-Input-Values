@@ -1,0 +1,150 @@
+/* Classic number, combo, toggle and text rows are drawn on the canvas, and the Nodes 2.0
+   ones use the frontend's Tailwind classes. These styles cover the rest: the multiline
+   preview and editor, read-only values and the source tag. Classic follows the LiteGraph
+   widget colors; Nodes 2.0 the raw design tokens (Tailwind inlines --color-*, so those are
+   not defined at runtime). */
+.siv-classic {
+  --siv-value: var(--siv-lg-text, #ddd);
+  --siv-muted: var(--siv-lg-muted, #999);
+  --siv-box-bg: var(--siv-lg-bg, #222);
+  --siv-box-line: var(--siv-lg-outline, #666);
+  --siv-box-radius: 8px;
+}
+
+.siv-vue {
+  --siv-value: var(--foreground, #e6e6e8);
+  --siv-muted: var(--muted-foreground, #9b9ba3);
+  --siv-box-bg: var(--input, #323238);
+  --siv-box-line: transparent;
+  --siv-box-radius: 5px;
+}
+
+.siv-layer {
+  position: fixed;
+  overflow: hidden;
+  pointer-events: none;
+  font: 11px Inter, sans-serif;
+}
+
+.siv-anchor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+}
+
+.siv-control {
+  position: absolute;
+  box-sizing: border-box;
+  height: 20px;
+  pointer-events: auto;
+}
+
+.siv-vue .siv-control {
+  height: 24px;
+}
+
+/* Only the switch itself takes the pointer; the rest of its row stays the slot's. */
+.siv-control.siv-pass {
+  pointer-events: none;
+}
+
+.siv-pass > * {
+  pointer-events: auto;
+}
+
+/* Outside the band, left of the label: where the value comes from. */
+.siv-source {
+  position: absolute;
+  max-width: 160px;
+  height: 24px;
+  line-height: 24px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--siv-muted);
+  font-size: 10px;
+  transform: translateX(-100%);
+}
+
+.siv-box {
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+  border: 1px solid var(--siv-box-line);
+  border-radius: var(--siv-box-radius);
+  background: var(--siv-box-bg);
+  color: var(--siv-value);
+  font: inherit;
+}
+
+.siv-box:focus-within {
+  border-color: var(--siv-value);
+}
+
+.siv-vue .siv-box:focus-within {
+  box-shadow: 0 0 0 1px var(--ring, #9b9ba3);
+}
+
+/* Multiline text: a square-cornered, monospace box like the textarea, with its line count. */
+.siv-multiline-preview {
+  gap: 4px;
+  border-radius: 3px;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  text-align: left;
+  cursor: text;
+}
+
+.siv-multiline-preview .siv-preview {
+  flex: 1;
+}
+
+.siv-lines {
+  flex: none;
+  color: var(--siv-muted);
+  font-size: 9px;
+}
+
+.siv-preview,
+.siv-readonly {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.siv-readonly {
+  color: var(--siv-muted);
+}
+
+.siv-linked {
+  height: 20px;
+  padding-left: 6px;
+  line-height: 20px;
+  color: var(--siv-muted);
+  font-style: italic;
+}
+
+.siv-vue .siv-linked {
+  line-height: 24px;
+}
+
+.siv-multiline {
+  position: absolute;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid var(--siv-value);
+  border-radius: var(--siv-box-radius);
+  outline: 0;
+  background: var(--siv-box-bg);
+  color: var(--siv-value);
+  font: 11px var(--font-mono, monospace);
+  line-height: 1.4;
+  resize: none;
+  pointer-events: auto;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.45);
+}
+
