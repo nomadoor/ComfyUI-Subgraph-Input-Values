@@ -533,15 +533,20 @@ export function createBoundaryOverlay(lgCanvas, { isVue, onCommit }) {
   // The source tag is drawn like the labels, so it sits on the row's middle as they do.
   function drawSource(ctx, line) {
     const { source } = line.row;
-    let text = `⇠ ${source.title} #${source.id}`;
+    const full = `⇠ ${source.title} #${source.id}`;
     ctx.save();
     ctx.font = SOURCE_FONT;
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
     ctx.fillStyle = sourceColor;
-    while (text.length > 1 && ctx.measureText(text).width > SOURCE_MAX) text = `${text.slice(0, -2)}…`;
+    // Shortened once per title rather than on every draw.
+    if (line.tag?.full !== full) {
+      let text = full;
+      while (text.length > 1 && ctx.measureText(text).width > SOURCE_MAX) text = `${text.slice(0, -2)}…`;
+      line.tag = { full, text };
+    }
     const g = rowGeometry(line.slot, labelWidth);
-    ctx.fillText(text, g.bandLeft - 4, g.y);
+    ctx.fillText(line.tag.text, g.bandLeft - 4, g.y);
     ctx.restore();
   }
 
@@ -573,7 +578,7 @@ export function createBoundaryOverlay(lgCanvas, { isVue, onCommit }) {
     labelWidth = Math.min(Math.max(longest + LABEL_GAP, LABEL_MIN), LABEL_MAX);
     const parts = [];
     lines = slots.map((slot) => {
-      const line = { slot, row: rowBySlot.get(slot) ?? null, control: null, drawn: false };
+      const line = { slot, row: rowBySlot.get(slot) ?? null, control: null, drawn: false, tag: null };
       if (line.row) {
         line.control = createControl(line, vue);
         line.drawn = !line.control;
