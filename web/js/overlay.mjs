@@ -138,7 +138,11 @@ export function createBoundaryOverlay(lgCanvas, { isVue, onCommit }) {
   function setShift(node) {
     if (node === shiftedNode && (!node || shifted.get(node) === labelWidth)) return;
     if (shiftedNode) shifted.delete(shiftedNode);
-    if (node) shifted.set(node, labelWidth);
+    // Lay the rows out now: the canvas only does it when it draws, after the controls are placed.
+    if (node) {
+      shifted.set(node, labelWidth);
+      node.arrange();
+    }
     shiftedNode = node;
     lgCanvas.setDirty(true, true);
   }
