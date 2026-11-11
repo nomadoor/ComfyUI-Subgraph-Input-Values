@@ -1,13 +1,18 @@
 # ComfyUI Subgraph Input Values
 
-[English](README.md)
+[![English](https://img.shields.io/badge/lang-English-blue)](README.md)
+[![日本語](https://img.shields.io/badge/lang-%E6%97%A5%E6%9C%AC%E8%AA%9E-red)](README_ja.md)
 
-サブグラフを開くと、入力の境界の各行が、ノードの widget の行のように「ラベル＋入力欄」になります。サブグラフノードに外出ししたパラメータの値を、その場で編集できます。入力欄は Classic と Nodes 2.0 のそれぞれの見た目に合わせています。
+https://github.com/user-attachments/assets/351969bf-72c4-4cf1-bb5d-f68944cc935d
 
-- 表示される値は、開いたサブグラフノードのものです。
-- 編集すると、そのノードの値だけが変わります。外から編集したときと同じで、undo もできます。
-- 外から Int・Float・String・Boolean の Primitive ノードで値を入れている入力は、その Primitive ノードの値を編集します。Primitive がつながって連鎖していたり、間に Reroute が入っていたりしてもたどります。どのノードかは、行に `⇠ Int #5` のように表示されます。同じ Primitive ノードにつながっているほかの入力の値も変わります。
-- 計算した結果が入ってくる入力は `linked` と表示され、編集できません。
-- パンくずやリンクから開いたなど、どのノードから開いたかがわからず、同じサブグラフを使うノードが複数あるときは、何も表示しません。
+サブグラフノードに出している値を、サブグラフの中から編集できます。
 
-実験的な拡張機能です。frontend の内部に依存しているので、今後動かなくなることがあります。
+サブグラフを開くと、左端に並ぶ入力ピンの横に、外のサブグラフノードと同じ入力欄が出ます。
+
+- 同じサブグラフを複数のノードで使っているときは、開くときに使ったノードの値を編集します。
+- 外でサブグラフノードに Primitive ノードをつないでいるときは、その Primitive ノードの値を編集します。Primitive が数珠つなぎになっていても、大元の Primitive までたどります。
+- 外で Get Image Size のような、値を計算して出すノードにつないでいるときは、実行するまで値が決まらないので、`linked` と表示されて編集できません。
+
+## インストール
+
+ComfyUI Manager で「Subgraph Input Values」を検索してインストールしてください。

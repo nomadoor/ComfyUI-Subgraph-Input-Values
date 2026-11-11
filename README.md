@@ -1,15 +1,18 @@
 # ComfyUI Subgraph Input Values
 
-[日本語](README_ja.md)
+[![English](https://img.shields.io/badge/lang-English-blue)](README.md)
+[![日本語](https://img.shields.io/badge/lang-%E6%97%A5%E6%9C%AC%E8%AA%9E-red)](README_ja.md)
 
 https://github.com/user-attachments/assets/351969bf-72c4-4cf1-bb5d-f68944cc935d
 
-When you open a subgraph, each row of its input boundary becomes a label and an input, like a node's widget row. You can edit the values you promoted to the subgraph node right there. The inputs follow the Classic or Nodes 2.0 style.
+Edit the values shown on a subgraph node from inside the subgraph.
 
-- The values belong to the subgraph node you opened.
-- Editing changes only that node, the same as editing it from outside. Undo works as usual.
-- If an input is fed from outside by an Int, Float, String or Boolean primitive (also through a chain of primitives or a Reroute), you edit that primitive instead. The row shows which node, such as `⇠ Int #5`. Everything else fed by that primitive changes too.
-- Inputs fed by anything that computes its value show `linked` and cannot be edited.
-- If the subgraph was opened without a specific node (from the breadcrumb or a link) and more than one node uses it, nothing is shown.
+When you open a subgraph, the same input boxes as on the subgraph node appear next to the input pins along its left edge.
 
-This is an experiment. It reads frontend internals that may change.
+- If several nodes use the same subgraph, you edit the values of the node you opened it from.
+- If a Primitive node is connected to the subgraph node outside, you edit that Primitive node's value. Through a chain of Primitives, it goes back to the first one.
+- If a node that computes its output, such as Get Image Size, is connected outside, the value is not known until the workflow runs, so the input shows `linked` and cannot be edited.
+
+## Install
+
+Search for "Subgraph Input Values" in ComfyUI Manager and install it.
