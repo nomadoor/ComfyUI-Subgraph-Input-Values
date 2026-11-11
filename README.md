@@ -2,6 +2,8 @@
 
 [日本語](README_ja.md)
 
+https://github.com/user-attachments/assets/351969bf-72c4-4cf1-bb5d-f68944cc935d
+
 When you open a subgraph, each row of its input boundary becomes a label and an input, like a node's widget row. You can edit the values you promoted to the subgraph node right there. The inputs follow the Classic or Nodes 2.0 style.
 
 - The values belong to the subgraph node you opened.
