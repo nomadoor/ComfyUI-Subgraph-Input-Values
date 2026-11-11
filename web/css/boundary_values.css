@@ -1,6 +1,6 @@
 /* Classic number, combo, toggle and text rows are drawn on the canvas, and the Nodes 2.0
    ones use the frontend's Tailwind classes. These styles cover the rest: the multiline
-   preview and editor, read-only values and the source tag. Classic follows the LiteGraph
+   preview and editor, and read-only values. Classic follows the LiteGraph
    widget colors; Nodes 2.0 the raw design tokens (Tailwind inlines --color-*, so those are
    not defined at runtime). */
 .siv-classic {
@@ -53,20 +53,6 @@
 
 .siv-pass > * {
   pointer-events: auto;
-}
-
-/* Outside the band, left of the label: where the value comes from. */
-.siv-source {
-  position: absolute;
-  max-width: 160px;
-  height: 24px;
-  line-height: 24px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--siv-muted);
-  font-size: 10px;
-  transform: translateX(-100%);
 }
 
 .siv-box {

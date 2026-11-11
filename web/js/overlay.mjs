@@ -25,6 +25,8 @@ function optionLabel(widget, value) {
 }
 
 const ROW_TOP = 12; // half the band's height
+const SOURCE_FONT = "10px Inter, sans-serif";
+const SOURCE_MAX = 160;
 const CONTROL_HEIGHT = 20;
 const VUE_CONTROL_HEIGHT = 24;
 const SWIPE_THRESHOLD = 50; // VueUse's usePointerSwipe default, which the number input uses
@@ -118,6 +120,7 @@ export function createBoundaryOverlay(lgCanvas, { isVue, onCommit }) {
   let menu = null;
   let bandPalette = "";
   let bandColors = ["", ""];
+  let sourceColor = "";
 
   // Disabled and read-only widgets are shown but never written, as on a node.
   function apply(widget, value) {
@@ -523,9 +526,25 @@ export function createBoundaryOverlay(lgCanvas, { isVue, onCommit }) {
     return { x: g.inputLeft, y: g.y - height / 2, width: INPUT_WIDTH, height };
   }
 
+  // The source tag is drawn like the labels, so it sits on the row's middle as they do.
+  function drawSource(ctx, line) {
+    const { source } = line.row;
+    let text = `⇠ ${source.title} #${source.id}`;
+    ctx.save();
+    ctx.font = SOURCE_FONT;
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = sourceColor;
+    while (text.length > 1 && ctx.measureText(text).width > SOURCE_MAX) text = `${text.slice(0, -2)}…`;
+    const g = rowGeometry(line.slot, labelWidth);
+    ctx.fillText(text, g.bandLeft - 4, g.y);
+    ctx.restore();
+  }
+
   function drawControls(ctx) {
     for (const line of lines) {
       if (line.drawn) drawWidget(ctx, line.row.widget, line.row.source ?? host, widgetRect(line), !lgCanvas.low_quality);
+      if (line.row?.source) drawSource(ctx, line);
     }
   }
 
@@ -550,7 +569,7 @@ export function createBoundaryOverlay(lgCanvas, { isVue, onCommit }) {
     labelWidth = Math.min(Math.max(longest + LABEL_GAP, LABEL_MIN), LABEL_MAX);
     const parts = [];
     lines = slots.map((slot) => {
-      const line = { slot, row: rowBySlot.get(slot) ?? null, control: null, drawn: false, tag: null };
+      const line = { slot, row: rowBySlot.get(slot) ?? null, control: null, drawn: false };
       if (line.row) {
         line.control = createControl(line, vue);
         line.drawn = !line.control;
@@ -559,10 +578,6 @@ export function createBoundaryOverlay(lgCanvas, { isVue, onCommit }) {
           line.control.root.style.width = `${INPUT_WIDTH}px`;
           line.control.root.dataset.input = slot.name;
           parts.push(line.control.root);
-        }
-        if (line.row.source) {
-          line.tag = el("div", "siv-source");
-          parts.push(line.tag);
         }
       }
       return line;
@@ -583,10 +598,6 @@ export function createBoundaryOverlay(lgCanvas, { isVue, onCommit }) {
       if (line.control) {
         setStyle(line.control.root, "left", `${g.inputLeft}px`);
         setStyle(line.control.root, "top", `${g.y - controlHeight / 2}px`);
-      }
-      if (line.tag) {
-        setStyle(line.tag, "left", `${g.bandLeft - 4}px`);
-        setStyle(line.tag, "top", `${g.y - ROW_TOP}px`);
       }
     }
     placeMenu();
@@ -649,18 +660,17 @@ export function createBoundaryOverlay(lgCanvas, { isVue, onCommit }) {
       layer.classList.toggle("siv-vue", vue);
       layer.classList.toggle("siv-classic", !vue);
       // The tint is the text color, which changes only with the renderer or the palette.
-      const palette = `${vue}|${lgCanvas.clear_background_color}|${lg.WIDGET_TEXT_COLOR}`;
+      const palette = `${vue}|${lgCanvas.clear_background_color}|${lg.WIDGET_TEXT_COLOR}|${lg.WIDGET_SECONDARY_TEXT_COLOR}`;
       if (palette !== bandPalette) {
         bandPalette = palette;
-        bandColors = [lgCanvas.clear_background_color, getComputedStyle(layer).getPropertyValue("--siv-value")];
+        const style = getComputedStyle(layer);
+        bandColors = [lgCanvas.clear_background_color, style.getPropertyValue("--siv-value")];
+        sourceColor = style.getPropertyValue("--siv-muted");
       }
       layer.hidden = false;
       setShift(graph.inputNode);
       place();
-      for (const line of lines) {
-        line.control?.refresh();
-        if (line.tag) setText(line.tag, `⇠ ${line.row.source.title} #${line.row.source.id}`);
-      }
+      for (const line of lines) line.control?.refresh();
     },
   };
 }
