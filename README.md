@@ -11,7 +11,10 @@ When you open a subgraph, the same input boxes as on the subgraph node appear ne
 
 - If several nodes use the same subgraph, you edit the values of the node you opened it from.
 - If a Primitive node is connected to the subgraph node outside, you edit that Primitive node's value. Through a chain of Primitives, it goes back to the first one.
+- If that Primitive also feeds other nodes, `shared` is shown next to it. Editing the value changes those nodes too.
 - If a node that computes its output, such as Get Image Size, is connected outside, the value is not known until the workflow runs, so the input shows `linked` and cannot be edited.
+- Drag the ⠿ at the left of a row to change the order of the inputs. The subgraph node outside follows.
+- Outputs can be reordered the same way, with the ⠿ at the right end of each output.
 
 ## Install
 
