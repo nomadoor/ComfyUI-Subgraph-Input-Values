@@ -1,8 +1,8 @@
 // While a subgraph's input boundary shows the value rows, its labels are drawn
 // left-aligned at the start of each row on a band reaching to the pin; rows are taller
 // too. The frontend sizes the boundary from them every frame, so the boundary is saved as
-// the frontend itself would lay it out. The output boundary gets bands from its pins to
-// past its labels. On both, the whole row acts as the slot for hovering, link drops and
+// the frontend itself would lay it out. The output boundary gets the same rows,
+// mirrored: bands from its pins to past its labels. On both, the whole row acts as the slot for hovering, link drops and
 // the context menu; a link is dragged only from the pin, and a label only takes a
 // double-click, to rename. Each band has a grip: dragging it moves the row among the
 // others, and dropping it asks for the slot to be moved there.
@@ -32,7 +32,8 @@ export function rowGeometry(slot, labelWidth) {
 }
 
 // An output's band starts at its pin and reaches past the label, which the frontend
-// draws a row's height right of the slot's left edge; the grip ends the band.
+// draws a row's height right of the slot's left edge; the grip ends the band. The band
+// is the input rows' mirror image.
 export function outputGeometry(slot, bandWidth) {
   const [dotX, y] = slot.pos;
   const bandLeft = dotX + 6;
@@ -51,8 +52,8 @@ const inputRows = {
 
 const outputRows = {
   geometry: outputGeometry,
-  height: (slot) => slot.boundingRect[3] - 4,
-  inRow: (slot, g, x, y) => x >= slot.pos[0] - 10 && x <= g.bandRight && Math.abs(y - g.y) <= slot.boundingRect[3] / 2,
+  height: () => BAND_HEIGHT,
+  inRow: (slot, g, x, y) => x >= slot.pos[0] - 10 && x <= g.bandRight && Math.abs(y - g.y) <= ROW_HEIGHT / 2,
   inGrip: (g, x) => x >= g.gripX - 3 && x <= g.bandRight,
   onPin: (slot, x) => x <= slot.pos[0] + 8,
 };
@@ -357,28 +358,41 @@ export function installBoundaryPatch(slot, inputNode, shifted, hooks) {
 
 // `shifted` maps each output node showing bands to its band width. `hooks` as for the
 // input boundary, with moveOutput(node, from, to) and without the control hooks. Rows
-// keep the frontend's layout; while one is dragged, that layout is what gets saved.
+// are ROW_HEIGHT apart like the inputs, with each pin where the frontend puts it; what
+// gets saved is the frontend's own layout.
 export function installOutputPatch(outputNode, shifted, hooks) {
   const rowDrag = createRowDrag(hooks, hooks.moveOutput);
   const nodeProto = Object.getPrototypeOf(outputNode);
-  const frontendPos = new WeakMap();
+  const frontendLayout = new WeakMap();
   wrap(nodeProto, "arrange", (base) =>
     function () {
       base.call(this);
-      if (rowDrag.current?.node !== this) return frontendPos.delete(this);
-      frontendPos.set(this, new Map(this.slots.map((s) => [s, [...s.pos]])));
-      const rects = new Map(this.slots.map((s) => [s, [...s.boundingRect]]));
-      const [, top0, , pitch] = rects.get(this.slots[0]);
-      rowDrag.layout(this, [[...this.slots]], top0, pitch, 0, (s, top) => {
+      if (!shifted.has(this) || !this.slots.length) return frontendLayout.delete(this);
+      frontendLayout.set(this, { size: [...this.size], pos: new Map(this.allSlots.map((s) => [s, [...s.pos]])) });
+      const rects = new Map(this.allSlots.map((s) => [s, [...s.boundingRect]]));
+      const top0 = rects.get(this.slots[0])[1];
+      // A taller rect would move the pin right by half the difference.
+      const place = (s, top) => {
         const [left, , width, height] = rects.get(s);
-        s.arrange([left, top, width, height]);
-      });
+        s.arrange([left - (ROW_HEIGHT - height) / 2, top, width, ROW_HEIGHT]);
+      };
+      rowDrag.layout(this, [[...this.slots]], top0, ROW_HEIGHT, 0, place);
+      place(this.emptySlot, top0 + this.slots.length * ROW_HEIGHT);
+      this.size = [this.size[0], this.size[1] + this.allSlots.reduce((sum, s) => sum + ROW_HEIGHT - rects.get(s)[3], 0)];
+    }
+  );
+  wrap(nodeProto, "asSerialisable", (base) =>
+    function () {
+      const data = base.call(this);
+      const layout = frontendLayout.get(this);
+      if (layout) data.bounding.splice(2, 2, ...layout.size);
+      return data;
     }
   );
   wrap(ownerOf(outputNode.slots[0], "asSerialisable"), "asSerialisable", (base) =>
     function () {
       const data = base.call(this);
-      const pos = frontendPos.get(this.parent)?.get(this);
+      const pos = frontendLayout.get(this.parent)?.pos.get(this);
       if (pos) data.pos = [...pos];
       return data;
     }

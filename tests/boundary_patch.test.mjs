@@ -422,13 +422,22 @@ class FakeOutput {
 class FakeOutputNode {
   constructor() {
     this.slots = [new FakeOutput(this, 600, 100), new FakeOutput(this, 600, 120), new FakeOutput(this, 600, 140)];
-    this.boundingRect = rect(586, 86, 90, 88);
+    this.emptySlot = new FakeOutput(this, 600, 160);
+    this.boundingRect = rect(586, 86, 90, 108);
+    this.size = [90, 108];
     this.downs = [];
     this.isPointerOver = false;
     this.subgraph = { getNodeOnPos: () => null };
   }
+  get allSlots() {
+    return [...this.slots, this.emptySlot];
+  }
   arrange() {
-    this.slots.forEach((s, i) => s.arrange([600, 100 + 20 * i, 60, 20]));
+    this.allSlots.forEach((s, i) => s.arrange([600, 100 + 20 * i, 60, 20]));
+    this.size = [90, 20 * this.allSlots.length + 28];
+  }
+  asSerialisable() {
+    return { bounding: [586, 86, ...this.size] };
   }
   containsPoint([x, y]) {
     return this.boundingRect.containsXy(x, y);
@@ -466,48 +475,57 @@ function setupOutputs() {
     },
   });
   shifted.set(node, 100);
+  node.arrange();
   return { node, state, patch };
 }
 
 test("an output's band runs from its pin past the label and ends in a grip", () => {
   const { node } = setupOutputs();
-  assert.deepEqual(outputGeometry(node.slots[0], 100), { y: 110, bandLeft: 616, bandRight: 716, gripX: 705 });
+  assert.deepEqual(outputGeometry(node.slots[0], 100), { y: 114, bandLeft: 616, bandRight: 716, gripX: 705 });
+});
+
+test("output rows are as far apart as the inputs, with the pins where the frontend puts them", () => {
+  const { node } = setupOutputs();
+  assert.deepEqual(node.allSlots.map((s) => s.pos), [[610, 114], [610, 142], [610, 170], [610, 198]]);
+  assert.equal(node.size[1], 4 * 28 + 28);
+  assert.deepEqual(node.slots.map((s) => s.asSerialisable().pos[1]), [110, 130, 150], "the frontend's layout is saved");
+  assert.deepEqual(node.asSerialisable().bounding, [586, 86, 90, 108]);
 });
 
 test("dragging an output by its grip moves it, and its label drags nothing", () => {
   const { node, state, patch } = setupOutputs();
   const [a, b, c] = node.slots;
-  const grip = { button: 0, canvasX: 706, canvasY: 150 };
+  const grip = { button: 0, canvasX: 706, canvasY: 170 };
   assert.equal(patch.cursorAt(node, grip.canvasX, grip.canvasY), "grab");
   const pointer = {};
   node.onPointerDown(grip, pointer);
   pointer.onDragStart();
-  pointer.onDrag({ canvasY: 110 });
+  pointer.onDrag({ canvasY: 114 });
   node.arrange();
-  assert.equal(c.pos[1], 110, "the held row follows the pointer");
-  assert.deepEqual([a.pos[1], b.pos[1]], [130, 150]);
-  pointer.onDragEnd({ canvasY: 110 });
+  assert.equal(c.pos[1], 114, "the held row follows the pointer");
+  assert.deepEqual([a.pos[1], b.pos[1]], [142, 170]);
+  pointer.onDragEnd({ canvasY: 114 });
   assert.deepEqual(state.moves, [[node, 2, 0]]);
-  assert.deepEqual(node.slots.map((s) => s.pos[1]), [110, 130, 150], "the frontend's layout is back");
+  assert.deepEqual(node.slots.map((s) => s.pos[1]), [114, 142, 170], "the rows are back in order");
 
   const label = {};
-  node.onPointerDown({ button: 0, canvasX: 640, canvasY: 130 }, label);
-  assert.equal(patch.cursorAt(node, 640, 130), "default");
+  node.onPointerDown({ button: 0, canvasX: 640, canvasY: 142 }, label);
+  assert.equal(patch.cursorAt(node, 640, 142), "default");
   label.onDoubleClick();
   assert.equal(node.renamed, b);
-  node.onPointerDown({ button: 0, canvasX: 612, canvasY: 130 }, {});
-  assert.deepEqual(node.downs, [[612, 130]], "the pin still starts a link");
-  assert.equal(patch.cursorAt(node, 612, 130), null);
+  node.onPointerDown({ button: 0, canvasX: 612, canvasY: 142 }, {});
+  assert.deepEqual(node.downs, [[612, 142]], "the pin still starts a link");
+  assert.equal(patch.cursorAt(node, 612, 142), null);
 });
 
 test("a dragged output is saved where the frontend lays it out", () => {
   const { node } = setupOutputs();
   const pointer = {};
-  node.onPointerDown({ button: 0, canvasX: 706, canvasY: 150 }, pointer);
+  node.onPointerDown({ button: 0, canvasX: 706, canvasY: 170 }, pointer);
   pointer.onDragStart();
-  pointer.onDrag({ canvasY: 110 });
+  pointer.onDrag({ canvasY: 114 });
   node.arrange();
-  assert.equal(node.slots[2].pos[1], 110);
+  assert.equal(node.slots[2].pos[1], 114);
   assert.deepEqual(node.slots.map((s) => s.asSerialisable().pos[1]), [110, 130, 150]);
   pointer.finally();
   assert.deepEqual(node.slots.map((s) => s.asSerialisable().pos[1]), [110, 130, 150]);
@@ -527,7 +545,7 @@ test("a row is found before nodes on it are looked up", () => {
 test("the patch reports a drag in progress", () => {
   const { node, patch } = setupOutputs();
   const pointer = {};
-  node.onPointerDown({ button: 0, canvasX: 706, canvasY: 150 }, pointer);
+  node.onPointerDown({ button: 0, canvasX: 706, canvasY: 170 }, pointer);
   assert.equal(patch.dragging(), false);
   pointer.onDragStart();
   assert.equal(patch.dragging(), true);

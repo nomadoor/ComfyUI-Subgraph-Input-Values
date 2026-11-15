@@ -52,7 +52,8 @@ const LABEL_MAX = 160;
 const shifted = new WeakMap();
 const shiftedOutputs = new WeakMap();
 // An output band: from the pin to the label, the label, then room for the grip.
-const OUTPUT_BAND_EXTRA = 28;
+const OUTPUT_BAND_EXTRA = 32;
+const OUTPUT_BAND_MIN = 150;
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -688,7 +689,7 @@ export function createBoundaryOverlay(lgCanvas, { isVue, onCommit, onMoveInput, 
     const names = next.slots.map((slot) => slot.displayName);
     if (shiftedOutputs.has(next) && names.join("\n") === outputNames) return;
     outputNames = names.join("\n");
-    shiftedOutputs.set(next, Math.max(...names.map((name) => measure.measureText(name).width)) + OUTPUT_BAND_EXTRA);
+    shiftedOutputs.set(next, Math.max(OUTPUT_BAND_MIN, ...names.map((name) => measure.measureText(name).width + OUTPUT_BAND_EXTRA)));
     lgCanvas.setDirty(true, true);
   }
 
