@@ -534,3 +534,11 @@ test("the patch reports a drag in progress", () => {
   pointer.finally();
   assert.equal(patch.dragging(), false);
 });
+
+test("removing the last input while rows are shown does not break the layout", () => {
+  const { node, shifted } = setup();
+  shifted.set(node, 90);
+  node.arrange();
+  node.slots.length = 0;
+  assert.doesNotThrow(() => node.arrange());
+});

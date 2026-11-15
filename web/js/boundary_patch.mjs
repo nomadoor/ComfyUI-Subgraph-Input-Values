@@ -312,6 +312,8 @@ export function installBoundaryPatch(slot, inputNode, shifted, hooks) {
   // The subgraph node outside shows inputs without a widget first and those with one
   // after them, so the rows are shown in the same two groups, with a gap between them.
   function layoutRows(node) {
+    // The last input can be removed before the rows go away.
+    if (!node.slots.length) return;
     const rects = new Map(node.allSlots.map((s) => [s, [...s.boundingRect]]));
     const groups = [node.slots.filter((s) => !hooks.hasWidget(s)), node.slots.filter((s) => hooks.hasWidget(s))].filter((g) => g.length);
     const gap = groups.length > 1 ? GROUP_GAP : 0;
