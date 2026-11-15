@@ -1,11 +1,32 @@
 import { app } from "../../../scripts/app.js";
 import { createHostTracker, resolveHost } from "./host_tracker.mjs";
+import { moveInput, moveOutput } from "./slot_order.mjs";
 import { createBoundaryOverlay } from "./overlay.mjs";
 
 const stylesheet = document.createElement("link");
 stylesheet.rel = "stylesheet";
 stylesheet.href = new URL("../css/boundary_values.css", import.meta.url).href;
 document.head.append(stylesheet);
+
+// Moves a slot in the saved workflow and loads the result through the change tracker's
+// own redo, as undo loads a state: the move becomes one undo step and the view stays
+// where it is.
+async function moveSlot(move, subgraphId, from, to) {
+  const changeTracker = app.extensionManager.workflow.activeWorkflow?.changeTracker;
+  if (!changeTracker) return;
+  changeTracker.captureCanvasState();
+  // Copied as the change tracker copies its states.
+  const data = JSON.parse(JSON.stringify(app.rootGraph.serialize()));
+  if (!move(data, subgraphId, from, to)) {
+    console.warn("[Subgraph Input Values] Could not move the slot: an instance's saved values do not match its slots.");
+    return;
+  }
+  // If the load fails, redo puts the state back; it must not be redone later.
+  const { redoQueue } = changeTracker;
+  redoQueue.splice(0, redoQueue.length, data);
+  await changeTracker.redo();
+  if (redoQueue.includes(data)) redoQueue.splice(redoQueue.indexOf(data), 1);
+}
 
 app.registerExtension({
   name: "nomadoor.SubgraphInputValues",
@@ -18,6 +39,8 @@ app.registerExtension({
     const overlay = createBoundaryOverlay(canvas, {
       isVue: () => app.extensionManager.setting.get("Comfy.VueNodes.Enabled"),
       onCommit: () => app.extensionManager.workflow.activeWorkflow?.changeTracker.captureCanvasState(),
+      onMoveInput: (subgraphId, from, to) => moveSlot(moveInput, subgraphId, from, to),
+      onMoveOutput: (subgraphId, from, to) => moveSlot(moveOutput, subgraphId, from, to),
     });
 
     const sync = () => {

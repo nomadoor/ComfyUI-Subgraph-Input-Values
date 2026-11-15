@@ -51,6 +51,8 @@ test("a promoted widget linked outside to something computed is a read-only link
   const [row] = buildRows(host, subgraph);
 
   assert.equal(row.kind, "linked");
+  assert.equal(row.widget, host.widgets[0]);
+  assert.equal(row.stoppedAt.id, 5);
 });
 
 test("a promoted widget fed by a primitive outside edits that primitive", () => {
@@ -70,6 +72,7 @@ test("a promoted widget fed by a primitive outside edits that primitive", () => 
   assert.equal(row.kind, "source");
   assert.equal(row.widget, int.widgets[0]);
   assert.equal(row.source, int);
+  assert.equal(row.shared, false);
 });
 
 test("a promoted multiline text, which is a DOM widget without a widgetId, gets a row", () => {

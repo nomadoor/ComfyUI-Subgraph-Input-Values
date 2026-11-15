@@ -4,7 +4,7 @@
 // classic_widgets.mjs); Nodes 2.0 rows, and multiline and read-only rows in both, are
 // HTML on this layer. The row still acts as the slot; only the editors take input.
 
-import { INPUT_WIDTH, installBoundaryPatch, rowGeometry } from "./boundary_patch.mjs";
+import { INPUT_WIDTH, installBoundaryPatch, installOutputPatch, rowGeometry } from "./boundary_patch.mjs";
 import { buildRows } from "./boundary_rows.mjs";
 import { drawWidget, pressWidget } from "./classic_widgets.mjs";
 import {
@@ -50,6 +50,10 @@ const LABEL_MIN = 80;
 const LABEL_MAX = 160;
 
 const shifted = new WeakMap();
+const shiftedOutputs = new WeakMap();
+// An output band: from the pin to the label, the label, then room for the grip.
+const OUTPUT_BAND_EXTRA = 32;
+const OUTPUT_BAND_MIN = 150;
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -70,12 +74,14 @@ function signatureOf(host, slots, rowBySlot, vue) {
   const parts = slots.map((slot) => {
     const row = rowBySlot.get(slot);
     const name = `${slot.id}:${slot.displayName}`;
-    return row ? `${name}:${row.kind}:${row.widget.type}:${row.source?.id ?? ""}` : `${name}:-`;
+    return row ? `${name}:${row.kind}:${row.widget.type}:${(row.source ?? row.stoppedAt)?.id ?? ""}` : `${name}:-`;
   });
   return `${host.id}|${vue}|${parts.join(",")}`;
 }
 
-export function createBoundaryOverlay(lgCanvas, { isVue, onCommit }) {
+// `onMoveInput(subgraphId, from, to)` and `onMoveOutput(...)` move a slot dropped at
+// another place by its grip.
+export function createBoundaryOverlay(lgCanvas, { isVue, onCommit, onMoveInput, onMoveOutput }) {
   const layer = el("div", "siv-layer");
   const anchor = el("div", "siv-anchor");
   layer.append(anchor);
@@ -116,6 +122,9 @@ export function createBoundaryOverlay(lgCanvas, { isVue, onCommit }) {
   let labelWidth = 0;
   let controlHeight = CONTROL_HEIGHT;
   let patched = false;
+  let outputNode = null;
+  let outputPatch = null;
+  let outputNames = "";
   let popup = null;
   let menu = null;
   let bandPalette = "";
@@ -531,9 +540,12 @@ export function createBoundaryOverlay(lgCanvas, { isVue, onCommit }) {
   }
 
   // The source tag is drawn like the labels, so it sits on the row's middle as they do.
+  // A long title is shortened; the id and the shared mark always stay.
   function drawSource(ctx, line) {
-    const { source } = line.row;
-    const full = `⇠ ${source.title} #${source.id}`;
+    const { shared } = line.row;
+    const source = line.row.source ?? line.row.stoppedAt;
+    const rest = ` #${source.id}${shared ? " · shared" : ""}`;
+    const full = `⇠ ${source.title}${rest}`;
     ctx.save();
     ctx.font = SOURCE_FONT;
     ctx.textAlign = "right";
@@ -541,9 +553,9 @@ export function createBoundaryOverlay(lgCanvas, { isVue, onCommit }) {
     ctx.fillStyle = sourceColor;
     // Shortened once per title rather than on every draw.
     if (line.tag?.full !== full) {
-      let text = full;
-      while (text.length > 1 && ctx.measureText(text).width > SOURCE_MAX) text = `${text.slice(0, -2)}…`;
-      line.tag = { full, text };
+      let title = `⇠ ${source.title}`;
+      while (title.length > 3 && ctx.measureText(title + rest).width > SOURCE_MAX) title = `${title.slice(0, -2)}…`;
+      line.tag = { full, text: title + rest };
     }
     const g = rowGeometry(line.slot, labelWidth);
     ctx.fillText(line.tag.text, g.bandLeft - 4, g.y);
@@ -553,7 +565,7 @@ export function createBoundaryOverlay(lgCanvas, { isVue, onCommit }) {
   function drawControls(ctx) {
     for (const line of lines) {
       if (line.drawn) drawWidget(ctx, line.row.widget, line.row.source ?? host, widgetRect(line), !lgCanvas.low_quality);
-      if (line.row?.source) drawSource(ctx, line);
+      if (line.row?.source || line.row?.stoppedAt) drawSource(ctx, line);
     }
   }
 
@@ -627,8 +639,91 @@ export function createBoundaryOverlay(lgCanvas, { isVue, onCommit }) {
     setShift(null);
   }
 
+  // Hooks both boundaries share.
+  const common = {
+    bandColors: () => bandColors,
+    redraw: () => {
+      lgCanvas.setDirty(true, true);
+      lgCanvas.hoveringOver = lgCanvas.hoveringOver; // picks the cursor again
+    },
+    // Escape would otherwise also leave the subgraph.
+    watchEscape: (cancel) => {
+      const onKey = (e) => {
+        if (e.key !== "Escape") return;
+        e.stopPropagation();
+        e.preventDefault();
+        cancel();
+      };
+      window.addEventListener("keydown", onKey, true);
+      return () => window.removeEventListener("keydown", onKey, true);
+    },
+  };
+  let inputPatch = null;
+
+  // The canvas shows a crosshair over a boundary; a grip shows a hand instead and a
+  // label an arrow, and a dragged row a closed hand wherever the pointer is. Its other
+  // cursors, such as while panning, are left alone.
+  const setCursor = lgCanvas._setCursor;
+  lgCanvas._setCursor = (cursor) => {
+    if (inputPatch?.dragging() || outputPatch?.dragging()) return setCursor("grabbing");
+    const [x, y] = lgCanvas.graph_mouse;
+    const pick = cursor === "crosshair" && ((shiftedNode && inputPatch.cursorAt(shiftedNode, x, y)) || (outputNode && outputPatch.cursorAt(outputNode, x, y)));
+    setCursor(pick || cursor);
+  };
+
+  // The output boundary gets its bands whenever a subgraph with outputs is open.
+  function updateOutputs(graph) {
+    const next = graph && graph !== graph.rootGraph && graph.outputs.length ? graph.outputNode : null;
+    if (next && !outputPatch) {
+      // While a link is dragged from an interior input, a drop on a band must go where it used to.
+      outputPatch = installOutputPatch(next, shiftedOutputs, {
+        ...common,
+        ignoreRows: () => lgCanvas.linkConnector.state.connectingTo === "output",
+        moveOutput: (node, from, to) => onMoveOutput(node.subgraph.id, from, to),
+      });
+    }
+    if (outputNode && outputNode !== next) shiftedOutputs.delete(outputNode);
+    outputNode = next;
+    if (!next) return;
+    // Measured again only when a name changes; undo may also replace the node.
+    const names = next.slots.map((slot) => slot.displayName);
+    if (shiftedOutputs.has(next) && names.join("\n") === outputNames) return;
+    outputNames = names.join("\n");
+    shiftedOutputs.set(next, Math.max(OUTPUT_BAND_MIN, ...names.map((name) => measure.measureText(name).width + OUTPUT_BAND_EXTRA)));
+    lgCanvas.setDirty(true, true);
+  }
+
+  // Widget colors and the band colors follow the renderer and the palette.
+  function refreshPalette(vue) {
+    const lg = window.LiteGraph;
+    for (const [name, value] of [
+      ["--siv-lg-bg", lg.WIDGET_BGCOLOR],
+      ["--siv-lg-outline", lg.WIDGET_OUTLINE_COLOR],
+      ["--siv-lg-text", lg.WIDGET_TEXT_COLOR],
+      ["--siv-lg-muted", lg.WIDGET_SECONDARY_TEXT_COLOR],
+    ]) {
+      if (layer.style.getPropertyValue(name) !== value) layer.style.setProperty(name, value);
+    }
+    controlHeight = vue ? VUE_CONTROL_HEIGHT : CONTROL_HEIGHT;
+    layer.classList.toggle("siv-vue", vue);
+    layer.classList.toggle("siv-classic", !vue);
+    // The tint is the text color, which changes only with the renderer or the palette.
+    const palette = `${vue}|${lgCanvas.clear_background_color}|${lg.WIDGET_TEXT_COLOR}|${lg.WIDGET_SECONDARY_TEXT_COLOR}`;
+    if (palette === bandPalette) return;
+    const style = getComputedStyle(layer);
+    const tint = style.getPropertyValue("--siv-value");
+    // Kept only once the stylesheet has loaded.
+    if (!tint) return;
+    bandPalette = palette;
+    bandColors = [lgCanvas.clear_background_color, tint];
+    sourceColor = style.getPropertyValue("--siv-muted");
+  }
+
   return {
     update(graph, nextHost) {
+      const vue = isVue();
+      refreshPalette(vue);
+      updateOutputs(graph);
       host = nextHost;
       // Undo recreates the graph objects with the same ids, so rows are read every frame.
       const rows = host ? buildRows(host, graph) : [];
@@ -637,15 +732,17 @@ export function createBoundaryOverlay(lgCanvas, { isVue, onCommit }) {
       rowBySlot = new Map(rows.map((row) => [row.slot, row]));
       if (!patched) {
         // While a link is dragged from an interior output, a drop on a band must go where it used to.
-        installBoundaryPatch(slots[0], graph.inputNode, shifted, {
+        inputPatch = installBoundaryPatch(slots[0], graph.inputNode, shifted, {
+          ...common,
           ignoreRows: () => lgCanvas.linkConnector.state.connectingTo === "input",
-          bandColors: () => bandColors,
           drawControls,
           pressControl,
+          moveInput: (node, from, to) => onMoveInput(node.subgraph.id, from, to),
+          // Rows are made for the inputs that have a widget on the host.
+          hasWidget: (slot) => rowBySlot.has(slot),
         });
         patched = true;
       }
-      const vue = isVue();
       const next = signatureOf(host, slots, rowBySlot, vue);
       if (next !== signature) {
         signature = next;
@@ -656,26 +753,6 @@ export function createBoundaryOverlay(lgCanvas, { isVue, onCommit }) {
         line.slot = slots[i];
         line.row = rowBySlot.get(slots[i]) ?? null;
       });
-      const lg = window.LiteGraph;
-      for (const [name, value] of [
-        ["--siv-lg-bg", lg.WIDGET_BGCOLOR],
-        ["--siv-lg-outline", lg.WIDGET_OUTLINE_COLOR],
-        ["--siv-lg-text", lg.WIDGET_TEXT_COLOR],
-        ["--siv-lg-muted", lg.WIDGET_SECONDARY_TEXT_COLOR],
-      ]) {
-        if (layer.style.getPropertyValue(name) !== value) layer.style.setProperty(name, value);
-      }
-      controlHeight = vue ? VUE_CONTROL_HEIGHT : CONTROL_HEIGHT;
-      layer.classList.toggle("siv-vue", vue);
-      layer.classList.toggle("siv-classic", !vue);
-      // The tint is the text color, which changes only with the renderer or the palette.
-      const palette = `${vue}|${lgCanvas.clear_background_color}|${lg.WIDGET_TEXT_COLOR}|${lg.WIDGET_SECONDARY_TEXT_COLOR}`;
-      if (palette !== bandPalette) {
-        bandPalette = palette;
-        const style = getComputedStyle(layer);
-        bandColors = [lgCanvas.clear_background_color, style.getPropertyValue("--siv-value")];
-        sourceColor = style.getPropertyValue("--siv-muted");
-      }
       layer.hidden = false;
       setShift(graph.inputNode);
       place();
