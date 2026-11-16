@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { installBoundaryPatch, installOutputPatch, outputGeometry, rowGeometry } from "../web/js/boundary_patch.mjs";
+import { installBoundaryPatch, installOutputPatch, outputGeometry, rowGeometry } from "../web/js/boundary_patch.js";
 
 function rect(x, y, w, h) {
   const r = [x, y, w, h];

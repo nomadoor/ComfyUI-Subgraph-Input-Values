@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { findValueSource } from "../web/js/value_source.mjs";
+import { findValueSource } from "../web/js/value_source.js";
 
 function makeGraph() {
   const nodes = [];
