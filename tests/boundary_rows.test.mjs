@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { buildRows } from "../web/js/boundary_rows.mjs";
+import { buildRows } from "../web/js/boundary_rows.js";
 
 function makeSubgraph(names) {
   return { inputs: names.map((name, i) => ({ id: `slot-${i}`, name })) };

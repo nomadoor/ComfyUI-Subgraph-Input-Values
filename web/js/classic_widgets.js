@@ -4,7 +4,7 @@
 // plain descriptor; like the canvas, this wraps it in its widget class for each draw and
 // press, and the class writes back through the descriptor's callback.
 
-import { isLocked, widgetPointerX } from "./widget_values.mjs";
+import { isLocked, widgetPointerX } from "./widget_values.js";
 
 const classes = new Map();
 

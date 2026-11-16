@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { moveInput, moveOutput } from "../web/js/slot_order.mjs";
+import { moveInput, moveOutput } from "../web/js/slot_order.js";
 
 const SG = "sg-1";
 

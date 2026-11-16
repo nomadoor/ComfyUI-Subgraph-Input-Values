@@ -3,7 +3,7 @@
 // `source` is the primitive outside whose value the row edits. A read-only linked row
 // has `stoppedAt` instead: the node the value could not be traced past, if any.
 
-import { findValueSource } from "./value_source.mjs";
+import { findValueSource } from "./value_source.js";
 
 function hostInputFor(host, slot) {
   return host.inputs.find(

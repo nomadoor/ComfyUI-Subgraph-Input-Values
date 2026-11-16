@@ -1,7 +1,7 @@
 import { app } from "../../../scripts/app.js";
-import { createHostTracker, resolveHost } from "./host_tracker.mjs";
-import { moveInput, moveOutput } from "./slot_order.mjs";
-import { createBoundaryOverlay } from "./overlay.mjs";
+import { createHostTracker, resolveHost } from "./host_tracker.js";
+import { moveInput, moveOutput } from "./slot_order.js";
+import { createBoundaryOverlay } from "./overlay.js";
 
 const stylesheet = document.createElement("link");
 stylesheet.rel = "stylesheet";

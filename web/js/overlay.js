@@ -1,12 +1,12 @@
 // Turns each row of a subgraph's input boundary into "label + input": the canvas draws
-// a band from the label to the slot (see boundary_patch.mjs) and the value's editor at
+// a band from the label to the slot (see boundary_patch.js) and the value's editor at
 // its right end. Classic rows are the frontend's own widgets drawn on the canvas (see
-// classic_widgets.mjs); Nodes 2.0 rows, and multiline and read-only rows in both, are
+// classic_widgets.js); Nodes 2.0 rows, and multiline and read-only rows in both, are
 // HTML on this layer. The row still acts as the slot; only the editors take input.
 
-import { INPUT_WIDTH, installBoundaryPatch, installOutputPatch, rowGeometry } from "./boundary_patch.mjs";
-import { buildRows } from "./boundary_rows.mjs";
-import { drawWidget, pressWidget } from "./classic_widgets.mjs";
+import { INPUT_WIDTH, installBoundaryPatch, installOutputPatch, rowGeometry } from "./boundary_patch.js";
+import { buildRows } from "./boundary_rows.js";
+import { drawWidget, pressWidget } from "./classic_widgets.js";
 import {
   comboValues,
   constrainNumber,
@@ -18,7 +18,7 @@ import {
   parseNumber,
   sliderPercent,
   toggleText,
-} from "./widget_values.mjs";
+} from "./widget_values.js";
 
 function optionLabel(widget, value) {
   return widget.options.getOptionLabel?.(String(value)) || String(value ?? "");

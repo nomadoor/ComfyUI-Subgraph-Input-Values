@@ -4,19 +4,22 @@
 
 - ComfyUI frontend extension. Inside a subgraph, each row of the input boundary becomes "label + input": a band from the left-aligned label to the slot, with the value's editor always shown at the right end, as the current renderer (Classic or Nodes 2.0) shows it.
 - Python is only the entry point: `__init__.py` exposes `WEB_DIRECTORY`.
-- `web/js/main.js` is the only extension entry. Supporting modules use `.mjs` so ComfyUI does not load them as separate extensions.
+- Browser modules under `web/` are plain `.js`. ComfyUI serves `.js` with `Cache-Control: no-store`; any other extension (`.mjs` included) gets no cache header, so the browser keeps its own copy and goes on running the old file after an update, through a ComfyUI restart and a hard reload. Do not add `.mjs` files under `web/`.
+- ComfyUI imports every `.js` under `web/` once at startup (the `/extensions` list). `web/js/main.js` is the only file that calls `app.registerExtension`. Every other module only defines and exports: no code that runs on import, no import cycles. The startup import and `main.js`'s own imports load the same URL, so each module still runs once.
+- Import specifiers are plain relative paths with no query string; a query makes a second copy of the module.
+- Code that must load only on demand goes in a dot-directory such as `web/js/.lazy/`: ComfyUI serves it with `no-store` but does not list it.
 - No build step and no runtime dependencies.
 
 | Module | Role |
 |---|---|
-| `host_tracker.mjs` | Which SubgraphNode instance the user entered from |
-| `boundary_rows.mjs` | Which widget owns each input's value |
-| `value_source.mjs` | Follows an outside link back to the primitive that holds the value |
-| `slot_order.mjs` | Moves a subgraph input or output in the serialized workflow |
-| `widget_values.mjs` | Number, combo, and control-kind rules |
-| `boundary_patch.mjs` | Row geometry; draws the bands, grips, labels and controls on the input boundary and bands and grips on the output boundary, lets the whole row act as the slot, and drags rows by their grips |
-| `classic_widgets.mjs` | Draws and operates Classic rows with the frontend's own widget classes |
-| `overlay.mjs` | The Nodes 2.0 editors, and the multiline, read-only and source parts in both renderers |
+| `host_tracker.js` | Which SubgraphNode instance the user entered from |
+| `boundary_rows.js` | Which widget owns each input's value |
+| `value_source.js` | Follows an outside link back to the primitive that holds the value |
+| `slot_order.js` | Moves a subgraph input or output in the serialized workflow |
+| `widget_values.js` | Number, combo, and control-kind rules |
+| `boundary_patch.js` | Row geometry; draws the bands, grips, labels and controls on the input boundary and bands and grips on the output boundary, lets the whole row act as the slot, and drags rows by their grips |
+| `classic_widgets.js` | Draws and operates Classic rows with the frontend's own widget classes |
+| `overlay.js` | The Nodes 2.0 editors, and the multiline, read-only and source parts in both renderers |
 
 ## Rules
 
@@ -43,7 +46,7 @@
 
 ## Testing
 
-- `npm test` runs `tests/*.test.mjs` with Node's test runner. Use TDD for the pure modules.
+- `npm test` runs `tests/*.test.mjs` with Node's test runner. Use TDD for the pure modules. `tests/modules.test.mjs` checks the module rules above.
 - Check browser behavior against a real ComfyUI with only this extension loaded, in both the classic renderer and Nodes 2.0 (`Comfy.VueNodes.Enabled`):
 
   ```bash
