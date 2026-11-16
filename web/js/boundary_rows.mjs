@@ -1,5 +1,7 @@
 // Pairs each subgraph input slot with the widget that owns its value: the host's
 // promoted widget, or, when that input is fed by a primitive outside, the primitive.
+// `source` is the primitive outside whose value the row edits. A read-only linked row
+// has `stoppedAt` instead: the node the value could not be traced past, if any.
 
 import { findValueSource } from "./value_source.mjs";
 
@@ -23,7 +25,11 @@ export function buildRows(host, subgraph) {
       continue;
     }
     const source = findValueSource(host.graph, input.link);
-    rows.push(source ? { slot, widget: source.widget, source: source.node, kind: "source" } : { slot, widget, kind: "linked" });
+    rows.push(
+      source?.widget
+        ? { slot, widget: source.widget, source: source.node, shared: source.shared, kind: "source" }
+        : { slot, widget, stoppedAt: source?.node, kind: "linked" }
+    );
   }
   return rows;
 }

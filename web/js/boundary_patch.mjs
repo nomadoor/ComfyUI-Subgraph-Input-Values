@@ -1,12 +1,19 @@
 // While a subgraph's input boundary shows the value rows, its labels are drawn
-// left-aligned at the start of each row on a band reaching to the pin, and the whole
-// row acts as the slot for hovering, dragging a link, renaming and the context menu.
-// Only drawing and hit testing change. Rows are taller too; the frontend sizes the boundary from them
-// every frame, so the boundary is saved as the frontend itself would lay it out.
+// left-aligned at the start of each row on a band reaching to the pin; rows are taller
+// too. The frontend sizes the boundary from them every frame, so the boundary is saved as
+// the frontend itself would lay it out. The output boundary gets the same rows,
+// mirrored: bands from its pins to past its labels. On both, the whole row acts as the slot for hovering, link drops and
+// the context menu; a link is dragged only from the pin, and a label only takes a
+// double-click, to rename. Each band has a grip: dragging it moves the row among the
+// others, and dropping it asks for the slot to be moved there.
 
 export const INPUT_WIDTH = 150;
 export const ROW_HEIGHT = 28;
 const BAND_HEIGHT = 24;
+const GRIP_WIDTH = 10;
+const GROUP_GAP = 14;
+const GRIP_ALPHA = 0.25;
+const GRIP_HOVER_ALPHA = 0.6;
 
 // CanvasItem flags in litegraph's globalEnums.ts.
 const SUBGRAPH_IO_NODE = 1 << 6;
@@ -20,12 +27,47 @@ export function rowGeometry(slot, labelWidth) {
   const inputRight = bandRight - 3;
   const inputLeft = inputRight - INPUT_WIDTH;
   const labelLeft = inputLeft - labelWidth;
-  return { y, bandLeft: labelLeft - 6, bandRight, labelLeft, inputLeft, inputRight };
+  const bandLeft = labelLeft - 6 - GRIP_WIDTH;
+  return { y, bandLeft, bandRight, gripX: bandLeft + 5, labelLeft, inputLeft, inputRight };
 }
 
-function inRow(slot, labelWidth, x, y) {
-  const { bandLeft } = rowGeometry(slot, labelWidth);
-  return x >= bandLeft && x <= slot.pos[0] + 10 && Math.abs(y - slot.pos[1]) <= ROW_HEIGHT / 2;
+// An output's band starts at its pin and reaches past the label, which the frontend
+// draws a row's height right of the slot's left edge; the grip ends the band. The band
+// is the input rows' mirror image.
+export function outputGeometry(slot, bandWidth) {
+  const [dotX, y] = slot.pos;
+  const bandLeft = dotX + 6;
+  const bandRight = bandLeft + bandWidth;
+  return { y, bandLeft, bandRight, gripX: bandRight - 11 };
+}
+
+const inputRows = {
+  geometry: rowGeometry,
+  height: () => BAND_HEIGHT,
+  inRow: (slot, g, x, y) => x >= g.bandLeft && x <= slot.pos[0] + 10 && Math.abs(y - g.y) <= ROW_HEIGHT / 2,
+  inGrip: (g, x) => x >= g.bandLeft && x < g.labelLeft - 2,
+  // While shifted, an input slot's own rect is only its dot.
+  onPin: (slot, x, y) => slot.boundingRect.containsXy(x, y),
+};
+
+const outputRows = {
+  geometry: outputGeometry,
+  height: () => BAND_HEIGHT,
+  inRow: (slot, g, x, y) => x >= slot.pos[0] - 10 && x <= g.bandRight && Math.abs(y - g.y) <= ROW_HEIGHT / 2,
+  inGrip: (g, x) => x >= g.gripX - 3 && x <= g.bandRight,
+  onPin: (slot, x) => x <= slot.pos[0] + 8,
+};
+
+// Two columns of three dots, like the grips in the frontend's side panel.
+function drawGrip(ctx, x, y) {
+  ctx.beginPath();
+  for (const dx of [0, 4]) {
+    for (const dy of [-4, 0, 4]) {
+      ctx.moveTo(x + dx + 1.2, y + dy);
+      ctx.arc(x + dx, y + dy, 1.2, 0, Math.PI * 2);
+    }
+  }
+  ctx.fill();
 }
 
 function ownerOf(object, name) {
@@ -38,13 +80,193 @@ function wrap(proto, name, make) {
   proto[name] = make(proto[name]);
 }
 
+// Drags a row by its grip. `drag` holds the boundary node, the slot, its index, the
+// pointer's offset from the row's top, the pointer's y, and the index it would be
+// dropped at. `move(node, from, to)` is called on a drop at another place.
+function createRowDrag(hooks, move) {
+  let drag = null;
+  let stopWatching = null;
+
+  function end() {
+    const node = drag?.node;
+    drag = null;
+    stopWatching?.();
+    // Back to the frontend's layout before anything can save the dragged one.
+    node?.arrange();
+    hooks.redraw();
+  }
+
+  return {
+    get current() {
+      return drag;
+    },
+
+    start(node, slot, e, pointer) {
+      const from = node.slots.indexOf(slot);
+      pointer.onClick = () => {};
+      pointer.onDragStart = () => {
+        drag = { node, slot, from, grab: e.canvasY - slot.boundingRect[1], y: e.canvasY, to: from };
+        stopWatching = hooks.watchEscape(end);
+      };
+      pointer.onDrag = (moveEvent) => {
+        if (!drag) return;
+        drag.y = moveEvent.canvasY;
+        hooks.redraw();
+      };
+      // The drop is laid out once more from where the pointer was released: the canvas
+      // may not have drawn since the last move.
+      pointer.onDragEnd = (up) => {
+        if (!drag) return;
+        drag.y = up.canvasY;
+        node.arrange();
+        const { from: was, to } = drag;
+        end();
+        if (to !== was) move(node, was, to);
+      };
+      pointer.finally = () => {
+        if (drag) end();
+      };
+    },
+
+    // Lays `groups` (lists of the node's slots, in display order) out from `top0`,
+    // `pitch` apart with `gap` between groups, through `place(slot, top)`. A dragged row
+    // follows the pointer within its group while the others close up around the place
+    // it would land.
+    layout(node, groups, top0, pitch, gap, place) {
+      const starts = [];
+      let count = 0;
+      for (const group of groups) {
+        starts.push(count);
+        count += group.length;
+      }
+      const topAt = (j) => top0 + j * pitch + gap * starts.filter((start) => start > 0 && j >= start).length;
+      const held = drag?.node === node ? drag : null;
+      if (held) {
+        const index = groups.findIndex((group) => group.includes(held.slot));
+        const group = groups[index];
+        const k = Math.min(Math.max(Math.round((held.y - held.grab - topAt(starts[index])) / pitch), 0), group.length - 1);
+        held.to = node.slots.indexOf(group[k]);
+        group.splice(group.indexOf(held.slot), 1);
+        group.splice(k, 0, held.slot);
+      }
+      groups.flat().forEach((s, j) => place(s, held?.slot === s ? held.y - held.grab : topAt(j)));
+    },
+  };
+}
+
+// The shared part of both boundaries: bands with grips under the boundary, the row as
+// the slot for hovering and drops, presses split between grip, pin and label, and the
+// cursor. `shifted` maps each node showing bands to the width its geometry needs.
+function patchRows(nodeProto, rows, shifted, hooks, rowDrag) {
+  const geometry = (node, slot) => rows.geometry(slot, shifted.get(node));
+
+  // The bands are opaque, so the grid does not show through, and drawn before the
+  // boundary so its labels and pins sit on top.
+  wrap(nodeProto, "draw", (base) =>
+    function (ctx, ...rest) {
+      if (shifted.has(this)) {
+        const [canvasColor, tint] = hooks.bandColors();
+        ctx.save();
+        for (const slot of this.slots) {
+          const { y, bandLeft, bandRight, gripX } = geometry(this, slot);
+          const height = rows.height(slot);
+          ctx.beginPath();
+          ctx.roundRect(bandLeft, y - height / 2, bandRight - bandLeft, height, 5);
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = canvasColor;
+          ctx.fill();
+          ctx.globalAlpha = 0.07;
+          ctx.fillStyle = tint;
+          ctx.fill();
+          ctx.globalAlpha = slot.isPointerOver || rowDrag.current?.slot === slot ? GRIP_HOVER_ALPHA : GRIP_ALPHA;
+          drawGrip(ctx, gripX, y);
+        }
+        ctx.restore();
+      }
+      base.call(this, ctx, ...rest);
+    }
+  );
+
+  // A node lying on a band keeps its own clicks and link drops.
+  const rowAt = (node, x, y) => {
+    if (!shifted.has(node) || hooks.ignoreRows()) return undefined;
+    const slot = node.slots.find((s) => rows.inRow(s, geometry(node, s), x, y));
+    return slot && !node.subgraph.getNodeOnPos(x, y) ? slot : undefined;
+  };
+
+  wrap(nodeProto, "containsPoint", (base) =>
+    function (point) {
+      return base.call(this, point) || !!rowAt(this, point[0], point[1]);
+    }
+  );
+  wrap(nodeProto, "getSlotInPosition", (base) =>
+    function (x, y) {
+      return base.call(this, x, y) ?? rowAt(this, x, y);
+    }
+  );
+  wrap(nodeProto, "onPointerMove", (base) =>
+    function (e) {
+      const result = base.call(this, e);
+      const slot = rowAt(this, e.canvasX, e.canvasY);
+      if (!slot) return result;
+      slot.isPointerOver = true;
+      if (!this.isPointerOver) this.onPointerEnter();
+      return result | SUBGRAPH_IO_NODE | SUBGRAPH_IO_SLOT;
+    }
+  );
+  // A left press on a grip drags the row, and one on a control is the control's. A left
+  // press elsewhere on the row starts no link (a pin sits right next to it), but a
+  // double-click renames. Other presses are handed over as presses on the slot dot,
+  // since onPointerDown checks each slot's own rect directly.
+  wrap(nodeProto, "onPointerDown", (base) =>
+    function (e, pointer, ...rest) {
+      const slot = rowAt(this, e.canvasX, e.canvasY);
+      if (slot && e.button === 0 && rows.inGrip(geometry(this, slot), e.canvasX)) return rowDrag.start(this, slot, e, pointer);
+      if (slot && e.button === 0 && hooks.pressControl?.(this, e, pointer)) return;
+      if (!slot || rows.onPin(slot, e.canvasX, e.canvasY)) return base.call(this, e, pointer, ...rest);
+      if (e.button === 0) {
+        // Taking the drag keeps the canvas from moving the boundary or the selection instead.
+        pointer.onDragStart = () => {};
+        pointer.onDragEnd = () => {};
+        pointer.onDoubleClick = () => this.handleSlotDoubleClick(slot, e);
+        return;
+      }
+      const { canvasX, canvasY } = e;
+      e.canvasX = slot.pos[0];
+      e.canvasY = slot.pos[1];
+      const result = base.call(this, e, pointer, ...rest);
+      e.canvasX = canvasX;
+      e.canvasY = canvasY;
+      return result;
+    }
+  );
+
+  return {
+    dragging: () => !!rowDrag.current,
+    // The cursor to show instead of the canvas's own, or null: a hand on a grip, and
+    // the plain arrow on the rest of a row, which is not a pin.
+    cursorAt(node, x, y) {
+      if (rowDrag.current) return "grabbing";
+      const slot = rowAt(node, x, y);
+      if (!slot || rows.onPin(slot, x, y)) return null;
+      return rows.inGrip(geometry(node, slot), x) ? "grab" : "default";
+    },
+  };
+}
+
 // `slot` must be a real input slot: EmptySubgraphInput has its own labelPos.
 // `shifted` maps each input node showing rows to its label column width. `hooks`:
 // - ignoreRows(): true while the rows must not catch the pointer
 // - bandColors(): the canvas color and the tint laid over it for the bands
 // - drawControls(ctx, node): draws what sits on the bands, over the boundary
 // - pressControl(node, e, pointer): takes a left press on a control and returns true
+// - moveInput(node, from, to): a row was dropped at another place
+// - hasWidget(slot): whether the row's input has a widget on the subgraph node outside,
+//   which decides its group
+// - redraw(): the canvas must draw again
+// - watchEscape(cancel): calls cancel on Escape until the returned function is called
 export function installBoundaryPatch(slot, inputNode, shifted, hooks) {
+  const rowDrag = createRowDrag(hooks, hooks.moveInput);
   const slotProto = ownerOf(slot, "labelPos");
   const { get } = Object.getOwnPropertyDescriptor(slotProto, "labelPos");
   Object.defineProperty(slotProto, "labelPos", {
@@ -84,8 +306,28 @@ export function installBoundaryPatch(slot, inputNode, shifted, hooks) {
       frontendLayout.set(this, { size: [...this.size], pos: new Map(this.allSlots.map((s) => [s, [...s.pos]])) });
       base.call(this);
       base.call(this);
+      layoutRows(this);
     }
   );
+
+  // The subgraph node outside shows inputs without a widget first and those with one
+  // after them, so the rows are shown in the same two groups, with a gap between them.
+  function layoutRows(node) {
+    // The last input can be removed before the rows go away.
+    if (!node.slots.length) return;
+    const rects = new Map(node.allSlots.map((s) => [s, [...s.boundingRect]]));
+    const groups = [node.slots.filter((s) => !hooks.hasWidget(s)), node.slots.filter((s) => hooks.hasWidget(s))].filter((g) => g.length);
+    const gap = groups.length > 1 ? GROUP_GAP : 0;
+    const place = (s, top) => {
+      const [left, , width, height] = rects.get(s);
+      s.arrange([left + width, top, width, height]);
+    };
+    rowDrag.layout(node, groups, rects.get(node.slots[0])[1], ROW_HEIGHT, gap, place);
+    if (!gap) return;
+    place(node.emptySlot, rects.get(node.emptySlot)[1] + gap);
+    node.size = [node.size[0], node.size[1] + gap];
+  }
+
   wrap(nodeProto, "asSerialisable", (base) =>
     function () {
       const data = base.call(this);
@@ -103,71 +345,57 @@ export function installBoundaryPatch(slot, inputNode, shifted, hooks) {
     }
   );
 
-  // The bands are opaque, so the grid does not show through, and drawn before the
-  // boundary so its labels and pins sit on top. The controls go over everything.
+  // The controls go over everything.
   wrap(nodeProto, "draw", (base) =>
     function (ctx, ...rest) {
-      if (shifted.has(this)) {
-        const [canvasColor, tint] = hooks.bandColors();
-        ctx.save();
-        for (const slot of this.slots) {
-          const { y, bandLeft, bandRight } = rowGeometry(slot, shifted.get(this));
-          ctx.beginPath();
-          ctx.roundRect(bandLeft, y - BAND_HEIGHT / 2, bandRight - bandLeft, BAND_HEIGHT, 5);
-          ctx.globalAlpha = 1;
-          ctx.fillStyle = canvasColor;
-          ctx.fill();
-          ctx.globalAlpha = 0.07;
-          ctx.fillStyle = tint;
-          ctx.fill();
-        }
-        ctx.restore();
-      }
       base.call(this, ctx, ...rest);
       if (shifted.has(this)) hooks.drawControls(ctx, this);
     }
   );
 
-  // A node lying on a band keeps its own clicks and link drops.
-  const rowAt = (node, x, y) => {
-    if (!shifted.has(node) || hooks.ignoreRows() || node.subgraph.getNodeOnPos(x, y)) return undefined;
-    return node.slots.find((s) => inRow(s, shifted.get(node), x, y));
-  };
+  return patchRows(nodeProto, inputRows, shifted, hooks, rowDrag);
+}
 
-  wrap(nodeProto, "containsPoint", (base) =>
-    function (point) {
-      return base.call(this, point) || !!rowAt(this, point[0], point[1]);
+// `shifted` maps each output node showing bands to its band width. `hooks` as for the
+// input boundary, with moveOutput(node, from, to) and without the control hooks. Rows
+// are ROW_HEIGHT apart like the inputs, with each pin where the frontend puts it; what
+// gets saved is the frontend's own layout.
+export function installOutputPatch(outputNode, shifted, hooks) {
+  const rowDrag = createRowDrag(hooks, hooks.moveOutput);
+  const nodeProto = Object.getPrototypeOf(outputNode);
+  const frontendLayout = new WeakMap();
+  wrap(nodeProto, "arrange", (base) =>
+    function () {
+      base.call(this);
+      if (!shifted.has(this) || !this.slots.length) return frontendLayout.delete(this);
+      frontendLayout.set(this, { size: [...this.size], pos: new Map(this.allSlots.map((s) => [s, [...s.pos]])) });
+      const rects = new Map(this.allSlots.map((s) => [s, [...s.boundingRect]]));
+      const top0 = rects.get(this.slots[0])[1];
+      // A taller rect would move the pin right by half the difference.
+      const place = (s, top) => {
+        const [left, , width, height] = rects.get(s);
+        s.arrange([left - (ROW_HEIGHT - height) / 2, top, width, ROW_HEIGHT]);
+      };
+      rowDrag.layout(this, [[...this.slots]], top0, ROW_HEIGHT, 0, place);
+      place(this.emptySlot, top0 + this.slots.length * ROW_HEIGHT);
+      this.size = [this.size[0], this.size[1] + this.allSlots.reduce((sum, s) => sum + ROW_HEIGHT - rects.get(s)[3], 0)];
     }
   );
-  wrap(nodeProto, "getSlotInPosition", (base) =>
-    function (x, y) {
-      return base.call(this, x, y) ?? rowAt(this, x, y);
+  wrap(nodeProto, "asSerialisable", (base) =>
+    function () {
+      const data = base.call(this);
+      const layout = frontendLayout.get(this);
+      if (layout) data.bounding.splice(2, 2, ...layout.size);
+      return data;
     }
   );
-  wrap(nodeProto, "onPointerMove", (base) =>
-    function (e) {
-      const result = base.call(this, e);
-      const slot = rowAt(this, e.canvasX, e.canvasY);
-      if (!slot) return result;
-      slot.isPointerOver = true;
-      if (!this.isPointerOver) this.onPointerEnter();
-      return result | SUBGRAPH_IO_NODE | SUBGRAPH_IO_SLOT;
+  wrap(ownerOf(outputNode.slots[0], "asSerialisable"), "asSerialisable", (base) =>
+    function () {
+      const data = base.call(this);
+      const pos = frontendLayout.get(this.parent)?.pos.get(this);
+      if (pos) data.pos = [...pos];
+      return data;
     }
   );
-  // A left press on a control is the control's. Otherwise onPointerDown checks each
-  // slot's own rect directly, so a press on the row is handed over as a press on the slot dot.
-  wrap(nodeProto, "onPointerDown", (base) =>
-    function (e, pointer, ...rest) {
-      const slot = rowAt(this, e.canvasX, e.canvasY);
-      if (slot && e.button === 0 && hooks.pressControl(this, e, pointer)) return;
-      if (!slot || slot.boundingRect.containsXy(e.canvasX, e.canvasY)) return base.call(this, e, pointer, ...rest);
-      const { canvasX, canvasY } = e;
-      e.canvasX = slot.pos[0];
-      e.canvasY = slot.pos[1];
-      const result = base.call(this, e, pointer, ...rest);
-      e.canvasX = canvasX;
-      e.canvasY = canvasY;
-      return result;
-    }
-  );
+  return patchRows(nodeProto, outputRows, shifted, hooks, rowDrag);
 }
