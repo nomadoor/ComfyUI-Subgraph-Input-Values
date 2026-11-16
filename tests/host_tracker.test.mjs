@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { createHostTracker, resolveHost } from "../web/js/host_tracker.mjs";
+import { createHostTracker, resolveHost } from "../web/js/host_tracker.js";
 
 function makeGraph(id, nodes = []) {
   const graph = { id, nodes, getNodeById: (nodeId) => graph.nodes.find((n) => n.id === nodeId) ?? null };

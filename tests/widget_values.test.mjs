@@ -13,7 +13,7 @@ import {
   sliderPercent,
   toggleText,
   widgetPointerX,
-} from "../web/js/widget_values.mjs";
+} from "../web/js/widget_values.js";
 
 test("controlKind shares controls between aliases and falls back to read-only", () => {
   assert.equal(controlKind("slider"), "number");
