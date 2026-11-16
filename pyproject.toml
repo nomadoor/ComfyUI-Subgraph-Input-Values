@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-subgraph-input-values"
 description = "Edit the values shown on a subgraph node from inside the subgraph, and reorder its inputs and outputs."
-version = "0.2.0"
+version = "0.2.1"
 license = {file = "LICENSE"}
 
 [project.urls]
