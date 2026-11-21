@@ -3,6 +3,10 @@
 [![English](https://img.shields.io/badge/lang-English-blue)](README.md)
 [![日本語](https://img.shields.io/badge/lang-%E6%97%A5%E6%9C%AC%E8%AA%9E-red)](README_ja.md)
 
+> [!IMPORTANT]
+> 同じ機能が ComfyUI frontend 1.61 で標準になりました。1.61 以降では、この拡張は何もしません。入力の並べ替えはプロパティパネルからできます（出力の並べ替えはまだできません）。
+> 急ぎでなければ、ComfyUI 本体の frontend のバージョンが 1.61 になるのを待ってください。
+
 https://github.com/user-attachments/assets/351969bf-72c4-4cf1-bb5d-f68944cc935d
 
 サブグラフノードに出している値を、サブグラフの中から編集できます。
