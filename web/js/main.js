@@ -3,10 +3,14 @@ import { createHostTracker, resolveHost } from "./host_tracker.js";
 import { moveInput, moveOutput } from "./slot_order.js";
 import { createBoundaryOverlay } from "./overlay.js";
 
-const stylesheet = document.createElement("link");
-stylesheet.rel = "stylesheet";
-stylesheet.href = new URL("../css/boundary_values.css", import.meta.url).href;
-document.head.append(stylesheet);
+// Frontend 1.61 shows these values itself, and its boundary keeps its size across arranges,
+// so the rows would grow it every frame. Without a version, fitSize (new in 1.61) marks it.
+function hasNativeValues() {
+  const [major, minor] = String(window.__COMFYUI_FRONTEND_VERSION__ ?? "").split(".").map(Number);
+  if (major > 1 || (major === 1 && minor >= 61)) return true;
+  if (major === 1) return false;
+  return "fitSize" in window.LiteGraph.Classes.SubgraphIONodeBase.prototype;
+}
 
 // Moves a slot in the saved workflow and loads the result through the change tracker's
 // own redo, as undo loads a state: the move becomes one undo step and the view stays
@@ -32,6 +36,15 @@ app.registerExtension({
   name: "nomadoor.SubgraphInputValues",
 
   setup() {
+    if (hasNativeValues()) {
+      console.info("[Subgraph Input Values] This frontend shows subgraph input values itself, so the extension stays off.");
+      return;
+    }
+    const stylesheet = document.createElement("link");
+    stylesheet.rel = "stylesheet";
+    stylesheet.href = new URL("../css/boundary_values.css", import.meta.url).href;
+    document.head.append(stylesheet);
+
     const canvas = app.canvas;
     const tracker = createHostTracker();
     // Edits made on the layer happen after the change tracker's own mouseup and
